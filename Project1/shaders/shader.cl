@@ -402,6 +402,12 @@ bool IntersectTriangle(Ray ray, Triangle tri, float* t, float* u, float* v, floa
 }
 
 //=============================================================================
+//Debug print matrix:
+//printf("Mesh transform");
+//printf("%f  %f  %f  %f\n", meshTransform.r1c1, meshTransform.r1c2, meshTransform.r1c3, meshTransform.r1c4);
+//printf("%f  %f  %f  %f\n", meshTransform.r2c1, meshTransform.r2c2, meshTransform.r2c3, meshTransform.r2c4);
+//printf("%f  %f  %f  %f\n", meshTransform.r3c1, meshTransform.r3c2, meshTransform.r3c3, meshTransform.r3c4);
+//printf("%f  %f  %f  %f\n", meshTransform.r4c1, meshTransform.r4c2, meshTransform.r4c3, meshTransform.r4c4);
 //=============================================================================
 
 
@@ -413,8 +419,8 @@ kernel void GPUMain(
 		global Vector* vertexArray,
 		int width,
 		int height,
-		int camXform,
-		int InvCamProjMat,
+		Matrix4x4 camXform,
+		Matrix4x4 InvCamProjMat,
 		global int* result
 	)
 {
@@ -427,16 +433,17 @@ kernel void GPUMain(
 		float v = (((float)y / (float)height) - 0.5f) * 2.0f;
 
 		Colour pixelColour;
+
 		//==========================================================================
 
 		Ray cameraRay = CreateCameraRay(u, v, camXform, InvCamProjMat);
-		float nearestT, currentT;
-
+		float currentT, nearestT = 1000000.0f;
+		bool intersection = false;
 		for(int i=0; i<nMeshes; i++)
 		{
 			Mesh currentMesh = meshArray[i];
-			Matrix4x4 meshTransform = xformArray[mesh.transformIndex];
-			for(int j=mesh.startTriangleIndex; j<mesh.endTriangleIndex; j++)
+			Matrix4x4 meshTransform = xformArray[currentMesh.transformIndex];
+			for(int j=currentMesh.startTriangleIndex; j<currentMesh.endTriangleIndex; j++)
 			{
 				Index currentTri = indexArray[j];
 
@@ -448,24 +455,24 @@ kernel void GPUMain(
 				tri.specular = currentTri.specular;
 
 				float outU, outV, outW;
-				bool intersection = IntersectTriangle(cameraRay, tri, &currentT, &outU, &outV, &outW);
+				intersection |= IntersectTriangle(cameraRay, tri, &currentT, &outU, &outV, &outW);
+			}
 
-				if(intersection && (currentT < nearestT))
-				{
-						Hit shader:
-						pixelColour = MakeColour(outU, outV, outW, 1.0f);
-				}
-				else
-				{
-						Miss shader:
-						float vNorm = (v + 1.0f) * 0.5f;
-						Colour blue = MakeColour(0.33f, 0.68, 0.9f, 1.0f);
-						Colour white = MakeColour(1.0f, 1.0f, 1.0f, 1.0f);
+			if(intersection)
+			{
+					//Hit shader:
+					pixelColour = MakeColour(1.0f, 0.0f, 0.0f, 1.0f);
+			}
+			else
+			{
+					//Miss shader:
+					float vNorm = (v + 1.0f) * 0.5f;
+					Colour blue = MakeColour(0.33f, 0.68, 0.9f, 1.0f);
+					Colour white = MakeColour(1.0f, 1.0f, 1.0f, 1.0f);
 
-						Colour lerpColour = MakeColour( (1.0f - vNorm) * white.r + vNorm * blue.r, (1.0f - vNorm) * white.g + vNorm * blue.g, (1.0f - vNorm) * white.b + vNorm * blue.b, (1.0f - vNorm) * white.a + vNorm * blue.a);
+					Colour lerpColour = MakeColour( (1.0f - vNorm) * white.r + vNorm * blue.r, (1.0f - vNorm) * white.g + vNorm * blue.g, (1.0f - vNorm) * white.b + vNorm * blue.b, (1.0f - vNorm) * white.a + vNorm * blue.a);
 
-						pixelColour = lerpColour;
-				}
+					pixelColour = lerpColour;
 			}
 		}
 		//==========================================================================

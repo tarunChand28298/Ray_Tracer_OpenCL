@@ -84,10 +84,10 @@ Renderer::~Renderer()
 {
 }
 
-void Renderer::Initialize(const Display& display)
+void Renderer::Initialize(Display& const display, Scene& const scene)
 {
-	width = display.width;
-	height = display.height;
+	targetDisplay = &display;
+	sourceScene = &scene;
 
 	//Create device, context and command queue:
 	{
@@ -130,36 +130,45 @@ void Renderer::Initialize(const Display& display)
 
 			delete[] log;
 		}
-
+		
 		kernel = clCreateKernel(program, "GPUMain", NULL);
 	}
 
-	//Setup inputs and outputs:
+	//Setup inputs and outputs
+	//TODO: move this out when functionality for adding and removing meshes is implemented and setup a callback system for this.
 	{
-		camXformBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Matrix4x4), NULL, NULL);
-		invCamProjMatBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Matrix4x4), NULL, NULL);
-		triangleXformBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Matrix4x4), NULL, NULL);
-		verticiesBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(Vector) * 3, NULL, NULL);
-		resultBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_int) * width * height, NULL, NULL);
+		meshArrayBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Mesh) * scene.meshArray.size(), NULL, NULL);
+		meshXformArrayBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Matrix4x4) * scene.meshXformArray.size(), NULL, NULL);
+		indexArrayBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Index) * scene.indexArray.size(), NULL, NULL);
+		vertexArrayBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(Vector) * scene.verticies.size(), NULL, NULL);
+		resultBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_int) * targetDisplay->width * targetDisplay->height, NULL, NULL);
 	}
-
-	if (result != nullptr) delete[] result;
-	result = new int[display.width * display.height];
 }
 
-void Renderer::Render(const Scene& scene)
+void Renderer::Render()
 {
-	clEnqueueWriteBuffer(commandQueue, verticiesBuffer, CL_TRUE, 0, sizeof(Vector) * 3, scene.triangle, 0, NULL, NULL);
+	clEnqueueWriteBuffer(commandQueue, meshArrayBuffer, CL_TRUE, 0, sizeof(Mesh) * sourceScene->meshArray.size(), sourceScene->meshArray.data(), 0, NULL, NULL);
+	clEnqueueWriteBuffer(commandQueue, meshXformArrayBuffer, CL_TRUE, 0, sizeof(Matrix4x4) * sourceScene->meshXformArray.size(), sourceScene->meshXformArray.data(), 0, NULL, NULL);
+	clEnqueueWriteBuffer(commandQueue, indexArrayBuffer, CL_TRUE, 0, sizeof(Index) * sourceScene->indexArray.size(), sourceScene->indexArray.data(), 0, NULL, NULL);
+	clEnqueueWriteBuffer(commandQueue, vertexArrayBuffer, CL_TRUE, 0, sizeof(Vector) * sourceScene->verticies.size(), sourceScene->verticies.data(), 0, NULL, NULL);
 
-	clSetKernelArg(kernel, 0, sizeof(Matrix4x4), &scene.camXform);
-	clSetKernelArg(kernel, 1, sizeof(Matrix4x4), &scene.invProjection);
-	clSetKernelArg(kernel, 2, sizeof(Matrix4x4), &scene.triangleXform);
-	clSetKernelArg(kernel, 3, sizeof(verticiesBuffer), &verticiesBuffer);
-	clSetKernelArg(kernel, 4, sizeof(resultBuffer), &resultBuffer);
-	clSetKernelArg(kernel, 5, sizeof(int), &width);
-	clSetKernelArg(kernel, 6, sizeof(int), &height);
+	int nMeshes = sourceScene->meshArray.size();
+	int viewportWidth = targetDisplay->width;
+	int viewportHeight = targetDisplay->height;
 
-	size_t globalDimensions[] = { width * height, 0, 0 };
+	cl_int result;
+	result = clSetKernelArg(kernel, 0, sizeof(int), &nMeshes);
+	result = clSetKernelArg(kernel, 1, sizeof(meshArrayBuffer), &meshArrayBuffer);
+	result = clSetKernelArg(kernel, 2, sizeof(meshXformArrayBuffer), &meshXformArrayBuffer);
+	result = clSetKernelArg(kernel, 3, sizeof(indexArrayBuffer), &indexArrayBuffer);
+	result = clSetKernelArg(kernel, 4, sizeof(vertexArrayBuffer), &vertexArrayBuffer);
+	result = clSetKernelArg(kernel, 5, sizeof(int), &viewportWidth);
+	result = clSetKernelArg(kernel, 6, sizeof(int), &viewportHeight);
+	result = clSetKernelArg(kernel, 7, sizeof(Matrix4x4), &sourceScene->camXform);
+	result = clSetKernelArg(kernel, 8, sizeof(Matrix4x4), &sourceScene->invProjection);
+	result = clSetKernelArg(kernel, 9, sizeof(resultBuffer), &resultBuffer);
+	
+	size_t globalDimensions[] = { viewportWidth * viewportHeight, 0, 0 };
 	auto returnValue = clEnqueueNDRangeKernel(commandQueue, kernel, 1, NULL, globalDimensions, NULL, 0, NULL, NULL);
 	if (returnValue != CL_SUCCESS)
 	{
@@ -167,31 +176,20 @@ void Renderer::Render(const Scene& scene)
 		std::cerr << errorString << std::endl;
 	}
 
-	clEnqueueReadBuffer(commandQueue, resultBuffer, CL_FALSE, 0, sizeof(cl_int) * width * height, (void*)result, 0, NULL, NULL);
+	clEnqueueReadBuffer(commandQueue, resultBuffer, CL_FALSE, 0, sizeof(cl_int) * viewportWidth * viewportHeight, (void*)targetDisplay->pixelBuffer, 0, NULL, NULL);
 
 	clFinish(commandQueue);
 }
 
 void Renderer::ShutDown()
 {
-	clReleaseMemObject(camXformBuffer);
-	clReleaseMemObject(invCamProjMatBuffer);
-	clReleaseMemObject(triangleXformBuffer);
-	clReleaseMemObject(verticiesBuffer);
+	clReleaseMemObject(meshArrayBuffer);
+	clReleaseMemObject(meshXformArrayBuffer);
+	clReleaseMemObject(indexArrayBuffer);
+	clReleaseMemObject(vertexArrayBuffer);
 	clReleaseMemObject(resultBuffer);
 
 	clReleaseCommandQueue(commandQueue);
 	clReleaseProgram(program);
 	clReleaseContext(context);
-
-	if (result != nullptr)
-	{
-		delete[] result;
-		result = nullptr;
-	}
-}
-
-int* Renderer::GetResult()
-{
-	return result;
 }

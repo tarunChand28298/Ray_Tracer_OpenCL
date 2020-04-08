@@ -23,10 +23,10 @@ public:
 	void ClearPixelbuffer();
 	void PresentPixelbufferToWindow();
 
+	int* pixelBuffer = nullptr;
 private:
 	HWND windowHandle = nullptr;
 	static LRESULT CALLBACK MainWindowProcedure(HWND windowHandle, UINT message, WPARAM wparam, LPARAM lparam);
-	int* pixelBuffer = nullptr;
 
 	BITMAPINFO pixelbufferInfo = {};
 	WNDCLASS windowClassInfo = {};

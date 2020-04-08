@@ -9,20 +9,27 @@ int main()
 	Scene mainScene;
 	Display mainDisplay;
 	Renderer mainRenderer;
+
+	//Initialize the scene:
+	mainScene.meshArray.push_back(Mesh(0, 0, 1));
+	mainScene.meshArray.push_back(Mesh(1, 0, 1));
+
+	mainScene.meshXformArray.push_back(IdentityMatrix() * TranslationMatrix(VectorDirection(0.0f, 0.0f, 10.0f)));
+	mainScene.meshXformArray.push_back(IdentityMatrix() * TranslationMatrix(VectorDirection(0.0f, 0.0f, 12.0f)));
+
+	mainScene.indexArray.push_back(Index(0, 1, 2, Colour(), Colour()));
+
+	mainScene.verticies.push_back(VectorPoint( 0.0f, 1.0f, 0.0f));
+	mainScene.verticies.push_back(VectorPoint( 1.0f, 0.0f, 0.0f));
+	mainScene.verticies.push_back(VectorPoint(-1.0f, 0.0f, 0.0f));
+
+	mainScene.camXform = IdentityMatrix();
+	
+	//Initialize rendering systems:
 	mainDisplay.Initialize();
-	mainRenderer.Initialize(mainDisplay);
+	mainRenderer.Initialize(mainDisplay, mainScene);
 
-	mainScene.camXform = IdentityMatrix();
-
-	mainScene.triangle[0] = VectorPoint( 0.0f,  1.0f,  0.0f);
-	mainScene.triangle[1] = VectorPoint( 1.0f,  0.0f,  0.0f);
-	mainScene.triangle[2] = VectorPoint(-1.0f,  0.0f,  0.0f);
-
-	mainScene.triangleXform = IdentityMatrix();
-	mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection(0.0f, 0.0f, 10.0f));
-
-	mainScene.camXform = IdentityMatrix();
-
+	//Start game loop:
 	while (!mainDisplay.quitRequested)
 	{
 		//Poll for events sent by OS:
@@ -31,22 +38,18 @@ int main()
 		//Update loop:
 		{
 			float speed = 0.01f;
-			if (GetAsyncKeyState('Z')) { mainScene.fov -= speed; }
-			if (GetAsyncKeyState('C')) { mainScene.fov += speed; }
 
-			if (GetAsyncKeyState('W')) { mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection(  0.0f,   0.0f,  speed)); }
-			if (GetAsyncKeyState('S')) { mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection(  0.0f,   0.0f, -speed)); }
-			if (GetAsyncKeyState('E')) { mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection(  0.0f, -speed,   0.0f)); }
-			if (GetAsyncKeyState('Q')) { mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection(  0.0f,  speed,   0.0f)); }
-			if (GetAsyncKeyState('D')) { mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection( speed,   0.0f,   0.0f)); }
-			if (GetAsyncKeyState('A')) { mainScene.triangleXform = mainScene.triangleXform * TranslationMatrix(VectorDirection(-speed,   0.0f,   0.0f)); }
+			Matrix4x4& m1 = mainScene.meshXformArray[0];
+			Matrix4x4& m2 = mainScene.meshXformArray[1];
 
-			if (GetAsyncKeyState('I')) { mainScene.triangleXform = mainScene.triangleXform * RotationMatrix(QuaternionNormalize(Quaternion(1.0f,  speed,   0.0f,   0.0f))); }
-			if (GetAsyncKeyState('K')) { mainScene.triangleXform = mainScene.triangleXform * RotationMatrix(QuaternionNormalize(Quaternion(1.0f, -speed,   0.0f,   0.0f))); }
-			if (GetAsyncKeyState('L')) { mainScene.triangleXform = mainScene.triangleXform * RotationMatrix(QuaternionNormalize(Quaternion(1.0f,   0.0f,  speed,   0.0f))); }
-			if (GetAsyncKeyState('J')) { mainScene.triangleXform = mainScene.triangleXform * RotationMatrix(QuaternionNormalize(Quaternion(1.0f,   0.0f, -speed,   0.0f))); }
-			if (GetAsyncKeyState('O')) { mainScene.triangleXform = mainScene.triangleXform * RotationMatrix(QuaternionNormalize(Quaternion(1.0f,   0.0f,   0.0f,  speed))); }
-			if (GetAsyncKeyState('U')) { mainScene.triangleXform = mainScene.triangleXform * RotationMatrix(QuaternionNormalize(Quaternion(1.0f,   0.0f,   0.0f, -speed))); }
+			if (GetAsyncKeyState('A')) { m1 = m1 * TranslationMatrix(VectorDirection(-speed,   0.0f,   0.0f)); }
+			if (GetAsyncKeyState('D')) { m1 = m1 * TranslationMatrix(VectorDirection( speed,   0.0f,   0.0f)); }
+			if (GetAsyncKeyState('W')) { m2 = m2 * TranslationMatrix(VectorDirection(  0.0f,  speed,   0.0f)); }
+			if (GetAsyncKeyState('S')) { m2 = m2 * TranslationMatrix(VectorDirection(  0.0f, -speed,   0.0f)); }
+			if (GetAsyncKeyState('Q')) { m1 = m1 * TranslationMatrix(VectorDirection(  0.0f,   0.0f,  speed)); }
+			if (GetAsyncKeyState('E')) { m1 = m1 * TranslationMatrix(VectorDirection(  0.0f,   0.0f, -speed)); }
+			if (GetAsyncKeyState('Z')) { m2 = m2 * TranslationMatrix(VectorDirection(  0.0f,   0.0f,  speed)); }
+			if (GetAsyncKeyState('C')) { m2 = m2 * TranslationMatrix(VectorDirection(  0.0f,   0.0f, -speed)); }
 
 			Matrix4x4 projMat = PerspectiveProjectionMatrix(mainScene.fov, (float)mainDisplay.width / (float)mainDisplay.height, 10000.0f, 0.1f);
 			mainScene.invProjection = MatrixInverse(projMat);
@@ -55,8 +58,7 @@ int main()
 		//Render loop:
 		{
 			mainDisplay.ClearPixelbuffer();
-			mainRenderer.Render(mainScene);
-			mainDisplay.FlipFromIntPtr(mainRenderer.GetResult());
+			mainRenderer.Render();
 			mainDisplay.PresentPixelbufferToWindow();
 		}
 	}

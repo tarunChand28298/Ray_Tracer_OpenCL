@@ -10,16 +10,13 @@ public:
 	Renderer();
 	~Renderer();
 
-	void Initialize(const Display& display);
-	void Render(const Scene& scene);
+	void Initialize(Display& const display, Scene& const scene);
+	void Render();
 	void ShutDown();
 
-	int* GetResult();
-
 private:
-	int* result = nullptr;
-	int width;
-	int height;
+	Scene* sourceScene;
+	Display* targetDisplay;
 
 	cl_device_id device;
 	cl_context context;
@@ -28,10 +25,10 @@ private:
 	cl_program program;
 	cl_kernel kernel;
 
-	cl_mem camXformBuffer;
-	cl_mem invCamProjMatBuffer;
-	cl_mem triangleXformBuffer;
-	cl_mem verticiesBuffer;
+	cl_mem meshArrayBuffer;
+	cl_mem meshXformArrayBuffer;
+	cl_mem indexArrayBuffer;
+	cl_mem vertexArrayBuffer;
 	cl_mem resultBuffer;
 
 };
