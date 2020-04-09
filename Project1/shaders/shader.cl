@@ -353,6 +353,34 @@ typedef struct
 	Vector direction;
 } Ray;
 
+typedef struct
+{
+	bool hit;
+	Vector position;
+	Vector normal;
+	Colour albedo;
+	Colour specular;
+	float hitDistance;
+	float u;
+	float v;
+	float w;
+} Hit;
+
+Hit MakeHit()
+{
+	Hit h;
+
+	h.hit = false;
+	h.position = VectorPoint(0.0f, 0.0f, 0.0f);
+	h.normal = VectorDirection(0.0f, 0.0f, 1.0f);
+	h.albedo = MakeColour(0.0f, 0.0f, 0.0f, 0.0f);
+	h.specular = MakeColour(0.0f, 0.0f, 0.0f, 0.0f);
+	h.hitDistance = 1000000.0f;
+	h.u = 0; h.v = 0; h.w = 1;
+
+	return h;
+}
+
 //GPU functions:
 Ray MakeRay(Vector origin, Vector direction)
 {
@@ -375,7 +403,7 @@ Ray CreateCameraRay(float u, float v, Matrix4x4 cameraTransform, Matrix4x4 camer
 	return MakeRay(origin, direction);
 }
 
-bool IntersectTriangle(Ray ray, Triangle tri, float* t, float* u, float* v, float* w)
+void IntersectTriangle(Ray ray, Triangle tri, Hit* hit)
 {
 	Vector edge1 = VectorSub(tri.v1, tri.v0);
 	Vector edge2 = VectorSub(tri.v2, tri.v0);
@@ -384,21 +412,33 @@ bool IntersectTriangle(Ray ray, Triangle tri, float* t, float* u, float* v, floa
 	float det = VectorDot(edge1, pVec);
 
 	//backface culling:
-	if (det <= 0) return false;
+	if (det <= 0) return;
 
 	float inv_det = 1.0f / det;
 	Vector tVec = VectorSub(ray.origin, tri.v0);
 
-	*u = VectorDot(tVec, pVec) * inv_det;
-	if (*u < 0.0f || *u > 1.0f) return false;
+	float u = VectorDot(tVec, pVec) * inv_det;
+	if (u < 0.0f || u > 1.0f) return;
 
 	Vector qVec = VectorCross(tVec, edge1);
-	*v = VectorDot(ray.direction, qVec) * inv_det;
-	if (*v < 0.0f || *u + *v > 1.0f) return false;
+	float v = VectorDot(ray.direction, qVec) * inv_det;
+	if (v < 0.0f || u + v > 1.0f) return;
 
-	*t = VectorDot(edge2, qVec) * inv_det;
-	*w = 1.0f - *u - *v;
-	return true;
+	float t = VectorDot(edge2, qVec) * inv_det;
+	float w = 1.0f - u - v;
+
+	if(t > 0 && t < hit->hitDistance)
+	{
+		hit->hit = true;
+		hit->hitDistance = t;
+		hit->position = VectorAdd(ray.origin, VectorMul(ray.direction, t));
+		hit->normal = VectorNormalize(VectorCross(edge1, edge2));
+		hit->albedo = tri.albedo;
+		hit->specular = tri.specular;
+		hit->u = u; hit->v = v; hit->w = w;
+	}
+
+	return;
 }
 
 //=============================================================================
@@ -437,8 +477,8 @@ kernel void GPUMain(
 		//==========================================================================
 
 		Ray cameraRay = CreateCameraRay(u, v, camXform, InvCamProjMat);
-		float currentT, nearestT = 1000000.0f;
-		bool intersection = false;
+		Hit hitInfo = MakeHit();
+
 		for(int i=0; i<nMeshes; i++)
 		{
 			Mesh currentMesh = meshArray[i];
@@ -454,14 +494,13 @@ kernel void GPUMain(
 				tri.albedo = currentTri.albedo;
 				tri.specular = currentTri.specular;
 
-				float outU, outV, outW;
-				intersection |= IntersectTriangle(cameraRay, tri, &currentT, &outU, &outV, &outW);
+				IntersectTriangle(cameraRay, tri, &hitInfo);
 			}
 
-			if(intersection)
+			if(hitInfo.hit)
 			{
 					//Hit shader:
-					pixelColour = MakeColour(1.0f, 0.0f, 0.0f, 1.0f);
+					pixelColour = MakeColour(0.96f, 0.35f, 0.45f, 1.0f);
 			}
 			else
 			{
